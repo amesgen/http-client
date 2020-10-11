@@ -9,13 +9,13 @@ import qualified OpenSSL.Session       as SSL
 main :: IO ()
 main = withOpenSSL $ hspec $ do
     it "make a TLS connection" $ do
-        manager <- newOpenSSLManager
+        manager <- testManager
         withResponse (parseRequest_ "HEAD https://s3.amazonaws.com/hackage.fpcomplete.com/01-index.tar.gz") manager $ \res -> do
             responseStatus res `shouldBe` status200
             lookup "content-type" (responseHeaders res) `shouldBe` Just "application/x-gzip"
 #ifdef USE_PROXY
     it "make a TLS connection with proxy" $ do
-        manager <- newOpenSSLManager
+        manager <- testManager
         let req = addProxy "localhost" 8080 $
                   parseRequest_ "HEAD https://s3.amazonaws.com/hackage.fpcomplete.com/01-index.tar.gz"
         withResponse req manager $ \res -> do
@@ -31,22 +31,32 @@ main = withOpenSSL $ hspec $ do
         (responseBody v) `shouldBe` (responseBody v_org)
 #endif
 
+#ifdef PROVIDE_TLS_DEFAULTS
     it "BadSSL: expired" $ do
-        manager <- newOpenSSLManager
+        manager <- testManager
         let action = withResponse "https://expired.badssl.com/" manager (const (return ()))
         action `shouldThrow` anyException
 
     it "BadSSL: self-signed" $ do
-        manager <- newOpenSSLManager
+        manager <- testManager
         let action = withResponse "https://self-signed.badssl.com/" manager (const (return ()))
         action `shouldThrow` anyException
 
     it "BadSSL: wrong.host" $ do
-        manager <- newOpenSSLManager
+        manager <- testManager
         let action = withResponse "https://wrong.host.badssl.com/" manager (const (return ()))
         action `shouldThrow` anyException
 
     it "BadSSL: we do have case-insensitivity though" $ do
-        manager <- newOpenSSLManager
+        manager <- testManager
         withResponse "https://BADSSL.COM" manager $ \res ->
             responseStatus res `shouldBe` status200
+#endif
+
+testManager :: IO Manager
+testManager =
+#ifdef PROVIDE_TLS_DEFAULTS
+    newOpenSSLManager
+#else
+    newManager $ opensslManagerSettings SSL.context
+#endif

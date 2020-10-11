@@ -4,11 +4,15 @@
 -- | Support for making connections via the OpenSSL library.
 module Network.HTTP.Client.OpenSSL
     ( withOpenSSL
+#ifdef PROVIDE_TLS_DEFAULTS
     , newOpenSSLManager
+#endif
     , opensslManagerSettings
+#ifdef PROVIDE_TLS_DEFAULTS
     , defaultMakeContext
     , OpenSSLSettings(..)
     , defaultOpenSSLSettings
+#endif
     ) where
 
 import Network.HTTP.Client
@@ -20,8 +24,11 @@ import OpenSSL
 import qualified Data.ByteString as S
 import qualified Network.Socket as N
 import qualified OpenSSL.Session as SSL
+#ifdef PROVIDE_TLS_DEFAULTS
 import qualified OpenSSL.X509.SystemStore as SSL (contextLoadSystemCerts)
+#endif
 
+#ifdef PROVIDE_TLS_DEFAULTS
 -- | Create a new 'Manager' using 'opensslManagerSettings' and 'defaultMakeContext'
 -- with 'defaultOpenSSLSettings'.
 newOpenSSLManager :: MonadIO m => m Manager
@@ -30,6 +37,7 @@ newOpenSSLManager = liftIO $ do
   -- https://github.com/openssl/openssl/issues/2165
   ctx <- defaultMakeContext defaultOpenSSLSettings
   newManager $ opensslManagerSettings (pure ctx)
+#endif
 
 -- | Note that it is the caller's responsibility to pass in an appropriate context.
 opensslManagerSettings :: IO SSL.SSLContext -> ManagerSettings
@@ -92,13 +100,16 @@ opensslManagerSettings mkContext = defaultManagerSettings
     makeSSLConnection ctx sock host = do
         ssl <- SSL.connection ctx sock
         SSL.setTlsextHostName ssl host
+#ifdef PROVIDE_TLS_DEFAULTS
         SSL.enableHostnameValidation ssl host
+#endif
         SSL.connect ssl
         makeConnection
            (SSL.read ssl 32752 `catch` \(_ :: SSL.ConnectionAbruptlyTerminated) -> return S.empty)
            (SSL.write ssl)
            (N.close sock)
 
+#ifdef PROVIDE_TLS_DEFAULTS
 defaultMakeContext :: OpenSSLSettings -> IO SSL.SSLContext
 defaultMakeContext OpenSSLSettings{..} = do
     ctx <- SSL.context
@@ -139,3 +150,4 @@ defaultOpenSSLSettings = OpenSSLSettings
     , osslSettingsCiphers = "DEFAULT"
     , osslSettingsLoadCerts = SSL.contextLoadSystemCerts
     }
+#endif
